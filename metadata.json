@@ -1,0 +1,6 @@
+{
+  "name": "BinPulse",
+  "description": "Smart waste bin monitoring dashboard with live Firebase sensor telemetry, Leaflet station map, Chart.js fill analytics, and priority pickup queue.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

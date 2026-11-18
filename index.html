@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BinPulse — Smart Waste Dashboard</title>
+  <meta name="description" content="Smart waste bin monitoring dashboard with live Firebase sensor telemetry, Leaflet station map, Chart.js fill analytics, and priority pickup queue." />
+  <meta property="og:title" content="BinPulse — Smart Waste Dashboard" />
+  <meta property="og:description" content="Smart waste bin monitoring dashboard with live Firebase sensor telemetry, Leaflet station map, Chart.js fill analytics, and priority pickup queue." />
+  <meta property="og:type" content="website" />
+
+  <!-- Typography: Plus Jakarta Sans for UI, JetBrains Mono for tabular sensor telemetry -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet CSS from CDN -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    /* ---- Design tokens: Soft White canvas, Jet Black surfaces, White text, Flame Orange accents ---- */
+    :root {
+      --bg-canvas: #f3f3f1;
+      --bg-card: #0c0c0e;
+      --bg-card-elevated: #151519;
+      --bg-row-hover: #1b1b20;
+      --border-subtle: #26262c;
+      --border-canvas: #dcdcd8;
+
+      --text-on-dark: #ffffff;
+      --text-muted-on-dark: #a6a6b2;
+      --text-on-light: #0c0c0e;
+      --text-muted-on-light: #52525b;
+
+      --flame: #ff5500;
+      --flame-hover: #ff6b1f;
+      --flame-soft: rgba(255, 85, 0, 0.14);
+
+      --status-critical: #ff453a;
+      --status-soon: #ff7a2f;
+      --status-ok: #30d158;
+
+      --radius-lg: 16px;
+      --radius-md: 10px;
+      --radius-sm: 6px;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background-color: var(--bg-canvas);
+      color: var(--text-on-light);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .mono {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ---- Top Navigation Bar (3-zone contract: Brand / Links / Action) ---- */
+    .topbar {
+      background-color: var(--bg-card);
+      color: var(--text-on-dark);
+      border-bottom: 1px solid var(--border-subtle);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+
+    .topbar-inner {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-on-dark);
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 1.125rem;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background-color: var(--flame);
+      color: var(--text-on-dark);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.875rem;
+      font-weight: 700;
+    }
+
+    .topnav {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .topnav a {
+      color: var(--text-muted-on-dark);
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: color 160ms ease;
+    }
+
+    .topnav a:hover,
+    .topnav a:focus-visible {
+      color: var(--text-on-dark);
+    }
+
+    .btn-primary {
+      appearance: none;
+      border: 0;
+      background-color: var(--flame);
+      color: var(--text-on-dark);
+      font-family: inherit;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      padding: 9px 16px;
+      min-height: 40px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background-color 160ms ease, transform 120ms ease;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--flame-hover);
+    }
+
+    .btn-primary:active {
+      transform: translateY(1px);
+    }
+
+    .btn-secondary {
+      appearance: none;
+      border: 1px solid var(--border-subtle);
+      background-color: var(--bg-card-elevated);
+      color: var(--text-on-dark);
+      font-family: inherit;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      padding: 7px 14px;
+      min-height: 36px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: border-color 160ms ease, background-color 160ms ease;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--flame);
+      background-color: var(--bg-row-hover);
+    }
+
+    button:focus-visible,
+    a:focus-visible {
+      outline: 2px solid var(--flame);
+      outline-offset: 2px;
+    }
+
+    /* ---- Main Page Container ---- */
+    .container {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 24px 24px 48px;
+    }
+
+    /* ---- Page Intro / Context Strip on Soft White Canvas ---- */
+    .page-intro {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-canvas);
+    }
+
+    .page-title {
+      margin: 0;
+      font-size: clamp(1.5rem, 2.5vw, 2rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--text-on-light);
+      text-wrap: balance;
+    }
+
+    .page-meta {
+      margin: 6px 0 0;
+      font-size: 0.875rem;
+      color: var(--text-muted-on-light);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 14px;
+    }
+
+    .meta-accent {
+      color: var(--flame);
+      font-weight: 600;
+    }
+
+    /* ---- Gas Hazard Alert Banner ---- */
+    #alert {
+      display: none;
+      background-color: var(--bg-card);
+      color: var(--text-on-dark);
+      border: 1px solid var(--status-critical);
+      border-radius: var(--radius-md);
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      font-size: 0.9375rem;
+      font-weight: 600;
+    }
+
+    .alert-inner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .alert-text {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 12px;
+      color: var(--text-on-dark);
+    }
+
+    .alert-flag {
+      color: var(--flame);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    /* ---- KPI Summary Row (4 Jet Black blocks on Soft White canvas) ---- */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .kpi-card {
+      background-color: var(--bg-card);
+      color: var(--text-on-dark);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .kpi-label {
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--text-muted-on-dark);
+    }
+
+    .kpi-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-on-dark);
+      line-height: 1.15;
+    }
+
+    .kpi-value.accent {
+      color: var(--flame);
+    }
+
+    .kpi-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted-on-dark);
+    }
+
+    /* ---- Dashboard Grid (Map + Chart, then Full-Width Priority Queue) ---- */
+    .wrap {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      gap: 20px;
+    }
+
+    .card {
+      background-color: var(--bg-card);
+      color: var(--text-on-dark);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .card-full {
+      grid-column: 1 / -1;
+    }
+
+    .card-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .card-title-group h2 {
+      margin: 0;
+      font-size: 1.0625rem;
+      font-weight: 600;
+      color: var(--text-on-dark);
+      letter-spacing: -0.01em;
+    }
+
+    .card-subtitle {
+      margin: 2px 0 0;
+      font-size: 0.8125rem;
+      color: var(--text-muted-on-dark);
+    }
+
+    /* ---- Leaflet Map Viewport ---- */
+    #map {
+      height: 360px;
+      width: 100%;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-subtle);
+      background-color: var(--bg-card-elevated);
+      z-index: 1;
+    }
+
+    /* Custom dark styling for Leaflet popups */
+    .leaflet-popup-content-wrapper,
+    .leaflet-popup-tip {
+      background-color: var(--bg-card);
+      color: var(--text-on-dark);
+      border: 1px solid var(--flame);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+    }
+
+    .leaflet-popup-content {
+      margin: 10px 14px;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+    }
+
+    .leaflet-container a.leaflet-popup-close-button {
+      color: var(--text-muted-on-dark);
+    }
+
+    .map-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+      margin-top: 12px;
+      font-size: 0.75rem;
+      color: var(--text-muted-on-dark);
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      display: inline-block;
+    }
+
+    /* ---- Chart Container ---- */
+    .chart-box {
+      position: relative;
+      flex: 1;
+      min-height: 360px;
+      width: 100%;
+    }
+
+    /* ---- Interactive Filter Segmented Control ---- */
+    .filter-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      background-color: var(--bg-card-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+    }
+
+    .filter-btn {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--text-muted-on-dark);
+      font-family: inherit;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      padding: 6px 12px;
+      min-height: 32px;
+      border-radius: 4px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background-color 150ms ease, color 150ms ease;
+    }
+
+    .filter-btn:hover {
+      color: var(--text-on-dark);
+    }
+
+    .filter-btn.active {
+      background-color: var(--flame);
+      color: var(--text-on-dark);
+      font-weight: 600;
+    }
+
+    /* ---- Priority Pickup Table ---- */
+    .table-scroll {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 640px;
+    }
+
+    thead th {
+      text-align: left;
+      padding: 10px 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted-on-dark);
+      border-bottom: 1px solid var(--border-subtle);
+      white-space: nowrap;
+    }
+
+    thead th.num,
+    tbody td.num {
+      text-align: right;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border-subtle);
+      transition: background-color 140ms ease;
+    }
+
+    tbody tr:last-child {
+      border-bottom: 0;
+    }
+
+    tbody tr.bin-row {
+      cursor: pointer;
+    }
+
+    tbody tr.bin-row:hover {
+      background-color: var(--bg-row-hover);
+    }
+
+    tbody td {
+      padding: 12px;
+      font-size: 0.875rem;
+      color: var(--text-on-dark);
+      vertical-align: middle;
+    }
+
+    .rank-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 28px;
+      height: 28px;
+      border-radius: var(--radius-sm);
+      background-color: var(--bg-card-elevated);
+      color: var(--text-muted-on-dark);
+      font-weight: 600;
+      font-size: 0.8125rem;
+    }
+
+    .rank-num.top-priority {
+      background-color: var(--flame);
+      color: var(--text-on-dark);
+    }
+
+    .bin-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+    }
+
+    .hazard-tag {
+      color: var(--flame);
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.02em;
+    }
+
+    .fill-cell {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .fill-track {
+      display: block;
+      width: 72px;
+      height: 6px;
+      border-radius: 3px;
+      background-color: var(--bg-card-elevated);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .fill-bar {
+      display: block;
+      height: 100%;
+      border-radius: 3px;
+      transition: width 200ms ease;
+    }
+
+    .status-text {
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .empty-row td {
+      text-align: center;
+      padding: 28px 12px;
+      color: var(--text-muted-on-dark);
+    }
+
+    /* ---- Footer on Soft White Canvas ---- */
+    .footer {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 0 24px 28px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 0.8125rem;
+      color: var(--text-muted-on-light);
+    }
+
+    /* ---- Responsive Breakpoints (Laptop & Phone) ---- */
+    @media (max-width: 1024px) {
+      .kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .wrap {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .topbar-inner {
+        padding: 12px 16px;
+        gap: 12px;
+      }
+
+      .topnav {
+        display: none;
+      }
+
+      .container {
+        padding: 16px 16px 36px;
+      }
+
+      .kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .kpi-card {
+        padding: 14px;
+      }
+
+      .kpi-value {
+        font-size: 1.375rem;
+      }
+
+      .card {
+        padding: 16px;
+      }
+
+      #map,
+      .chart-box {
+        height: 280px;
+      }
+
+      .footer {
+        padding: 0 16px 24px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+      * {
+        transition: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Bar: Brand, Quick Section Links, Primary Action -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="#top" class="brand">
+        <span class="brand-mark" aria-hidden="true">B</span>
+        <span>BinPulse</span>
+      </a>
+
+      <nav class="topnav" aria-label="Dashboard sections">
+        <a href="#overview">Overview</a>
+        <a href="#map-section">Bin Map</a>
+        <a href="#chart-section">Fill Levels</a>
+        <a href="#priority-section">Priority List</a>
+      </nav>
+
+      <button type="button" id="focusTopBtn" class="btn-primary">
+        Focus Top Priority
+      </button>
+    </div>
+  </header>
+
+  <main id="top" class="container">
+    <!-- Page Title and Live Firebase Sync Summary -->
+    <section id="overview" class="page-intro">
+      <div>
+        <h1 class="page-title">Smart Waste Bin Monitoring</h1>
+        <p class="page-meta">
+          <span>5 active bins</span>
+          <span>Gas threshold <span class="mono meta-accent">2500</span></span>
+          <span id="lastUpdateText">Waiting for sensor update</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- Hazard Alert Banner (shown automatically when gas > GAS_LIMIT) -->
+    <div id="alert" role="alert" aria-live="assertive"></div>
+
+    <!-- 4-Card KPI Summary Strip computed directly from live bin readings -->
+    <section class="kpi-grid" aria-label="Key metrics">
+      <div class="kpi-card">
+        <span class="kpi-label">Next Scheduled Pickup</span>
+        <span id="kpiNextBin" class="kpi-value accent">-</span>
+        <span id="kpiNextSub" class="kpi-sub">Sorted by hazard and fill rate</span>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-label">Highest Fill Level</span>
+        <span id="kpiMaxFill" class="kpi-value mono">0%</span>
+        <span id="kpiMaxSub" class="kpi-sub">Across all 5 bins</span>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-label">Soonest Time to Full</span>
+        <span id="kpiSoonest" class="kpi-value mono">-</span>
+        <span class="kpi-sub">Based on last 6 readings</span>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-label">Active Gas Hazards</span>
+        <span id="kpiHazards" class="kpi-value mono">0</span>
+        <span class="kpi-sub">Bins above 2500 limit</span>
+      </div>
+    </section>
+
+    <!-- Main Dashboard Grid: Leaflet Map + Chart.js Fill Levels + Priority Table -->
+    <div class="wrap">
+      <!-- Leaflet Map Card -->
+      <section id="map-section" class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>Bin Location Map</h2>
+            <p class="card-subtitle">Click a marker or queue row to inspect sensor details</p>
+          </div>
+          <button type="button" id="resetMapBtn" class="btn-secondary">Center Map</button>
+        </div>
+        <div id="map" aria-label="Interactive map of waste bin locations"></div>
+        <div class="map-legend">
+          <span class="legend-item">
+            <span class="legend-swatch" style="background:#ff453a"></span>
+            <span>Collect now (&ge; 80%)</span>
+          </span>
+          <span class="legend-item">
+            <span class="legend-swatch" style="background:#ff7a2f"></span>
+            <span>Soon (50–79%)</span>
+          </span>
+          <span class="legend-item">
+            <span class="legend-swatch" style="background:#30d158"></span>
+            <span>OK (&lt; 50%)</span>
+          </span>
+        </div>
+      </section>
+
+      <!-- Chart.js Bar Chart Card -->
+      <section id="chart-section" class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>Fill Levels</h2>
+            <p class="card-subtitle">Live ultrasonic fill percentage per station</p>
+          </div>
+        </div>
+        <div class="chart-box">
+          <canvas id="chart" aria-label="Bar chart of bin fill percentages"></canvas>
+        </div>
+      </section>
+
+      <!-- Full-Width Priority Pickup Queue Card -->
+      <section id="priority-section" class="card card-full">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>Priority Pickup List</h2>
+            <p class="card-subtitle">Hazards listed first, then soonest to reach 100% capacity</p>
+          </div>
+          <div class="filter-group" role="group" aria-label="Filter priority list">
+            <button type="button" class="filter-btn active" data-filter="all">All Bins</button>
+            <button type="button" class="filter-btn" data-filter="action">Needs Action</button>
+            <button type="button" class="filter-btn" data-filter="hazard">Hazards</button>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Priority</th>
+                <th>Bin</th>
+                <th class="num">Fill %</th>
+                <th class="num">Gas</th>
+                <th class="num">Time to full</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="list"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <span>BinPulse Smart Waste Monitoring</span>
+    <span>Data source: Firebase Realtime Database (bins/bin1 to bins/bin5)</span>
+  </footer>
+
+  <!-- External Libraries from CDN only -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <script>
+    // ---- 1. Firebase setup: exact project configuration ----
+    const firebaseConfig = {
+      apiKey: "AIzaSyAi4Ty7_L_H6lfHCY38szmcy-NDjAzD4AE",
+      databaseURL: "https://binpulse-28072-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "binpulse-28072",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // ---- 2. Settings and bin definitions ----
+    const SCALE = 60;        // demo speed: 1 real second = 1 simulated minute
+    const GAS_LIMIT = 2500;  // gas reading above this = hazard
+
+    // Bin 1 is the real Wokwi sensor. Bins 2-5 are simulated.
+    const bins = {
+      bin1: { id: "bin1", name: "Bin 1", lat: 6.9271, lng: 79.8612, fill: 0, gas: 0, ts: null, hist: [] },
+      bin2: { id: "bin2", name: "Bin 2", lat: 6.9310, lng: 79.8580, fill: 0, gas: 0, ts: null, hist: [] },
+      bin3: { id: "bin3", name: "Bin 3", lat: 6.9230, lng: 79.8650, fill: 0, gas: 0, ts: null, hist: [] },
+      bin4: { id: "bin4", name: "Bin 4", lat: 6.9290, lng: 79.8700, fill: 0, gas: 0, ts: null, hist: [] },
+      bin5: { id: "bin5", name: "Bin 5", lat: 6.9200, lng: 79.8570, fill: 0, gas: 0, ts: null, hist: [] }
+    };
+
+    // Active table filter ("all" | "action" | "hazard") and update tracking
+    let activeFilter = "all";
+    let lastUpdateAt = null;
+
+    // ---- 3. Prediction: how long until the bin is full? ----
+    function simHours() {
+      return Date.now() / 1000 * SCALE / 3600;
+    }
+
+    // Remember the last 6 readings to calculate fill rate
+    function record(b) {
+      b.hist.push({ h: simHours(), f: b.fill });
+      if (b.hist.length > 6) b.hist.shift();
+    }
+
+    function minutesToFull(b) {
+      if (b.fill >= 100) return 0;
+      if (b.hist.length < 2) return null;
+      const first = b.hist[0];
+      const last = b.hist[b.hist.length - 1];
+      const dh = last.h - first.h;
+      if (dh <= 0) return null;
+      const rate = (last.f - first.f) / dh;  // % per hour
+      if (rate <= 0.5) return null;          // not really filling
+      return Math.round((100 - b.fill) / rate * 60);
+    }
+
+    function formatTime(m) {
+      if (m === null) return "-";
+      if (m === 0) return "FULL";
+      return Math.floor(m / 60) + " h " + (m % 60) + " min";
+    }
+
+    function statusOf(b) {
+      if (b.fill >= 80) return { text: "Collect now", color: "#ff453a" };
+      if (b.fill >= 50) return { text: "Soon", color: "#ff7a2f" };
+      return { text: "OK", color: "#30d158" };
+    }
+
+    // ---- 4. Map and Chart.js setup ----
+    const MAP_CENTER = [6.9255, 79.8615];
+    const MAP_ZOOM = 14;
+
+    const map = L.map("map").setView(MAP_CENTER, MAP_ZOOM);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap"
+    }).addTo(map);
+
+    const markers = {};
+    for (const id in bins) {
+      markers[id] = L.circleMarker([bins[id].lat, bins[id].lng], {
+        radius: 13,
+        weight: 2,
+        fillOpacity: 0.85
+      }).addTo(map);
+    }
+
+    // Chart.js configured for white text on jet black card background
+    const chart = new Chart(document.getElementById("chart"), {
+      type: "bar",
+      data: {
+        labels: [],
+        datasets: [{
+          label: "Fill %",
+          data: [],
+          backgroundColor: [],
+          borderRadius: 6,
+          maxBarThickness: 48
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            backgroundColor: "#0c0c0e",
+            titleColor: "#ffffff",
+            bodyColor: "#ffffff",
+            borderColor: "#ff5500",
+            borderWidth: 1,
+            padding: 10
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: "#ffffff", font: { family: "'Plus Jakarta Sans', sans-serif", weight: "600" } },
+            grid: { display: false }
+          },
+          y: {
+            min: 0,
+            max: 100,
+            ticks: {
+              color: "#a6a6b2",
+              font: { family: "'JetBrains Mono', monospace" },
+              callback: function(value) { return value + "%"; }
+            },
+            grid: { color: "rgba(255, 255, 255, 0.08)" }
+          }
+        }
+      }
+    });
+
+    // Helper: sort bins by hazard first, then soonest to full, then highest fill %
+    function getSortedRows() {
+      const rows = Object.values(bins).map(b => ({ b: b, mins: minutesToFull(b) }));
+      rows.sort((x, y) => {
+        const hx = x.b.gas > GAS_LIMIT, hy = y.b.gas > GAS_LIMIT;
+        if (hx !== hy) return hx ? -1 : 1;
+        const kx = x.mins === null ? 99999 : x.mins;
+        const ky = y.mins === null ? 99999 : y.mins;
+        if (kx !== ky) return kx - ky;
+        return y.b.fill - x.b.fill;
+      });
+      return rows;
+    }
+
+    // Helper: pan map to a bin and open its popup
+    function focusBinOnMap(binId) {
+      const b = bins[binId];
+      if (!b || !markers[binId]) return;
+      map.setView([b.lat, b.lng], 15, { animate: true });
+      markers[binId].openPopup();
+    }
+
+    // ---- 5. Draw everything ----
+    function render() {
+      const sortedRows = getSortedRows();
+      const all = Object.values(bins);
+
+      // Update KPI summary cards using real Firebase readings
+      const topRow = sortedRows[0];
+      const kpiNextBin = document.getElementById("kpiNextBin");
+      const kpiNextSub = document.getElementById("kpiNextSub");
+      if (topRow && (topRow.b.fill > 0 || topRow.b.gas > GAS_LIMIT)) {
+        kpiNextBin.textContent = topRow.b.name;
+        kpiNextSub.textContent = topRow.b.gas > GAS_LIMIT
+          ? "Gas hazard detected"
+          : (topRow.b.fill + "% full · " + statusOf(topRow.b).text);
+      } else {
+        kpiNextBin.textContent = topRow ? topRow.b.name : "-";
+        kpiNextSub.textContent = "All bins nominal";
+      }
+
+      const maxFill = Math.max.apply(null, all.map(b => b.fill));
+      const maxBin = all.find(b => b.fill === maxFill);
+      document.getElementById("kpiMaxFill").textContent = maxFill + "%";
+      document.getElementById("kpiMaxSub").textContent = maxBin ? (maxBin.name + " peak level") : "Across all 5 bins";
+
+      const timedRows = sortedRows.filter(r => r.mins !== null);
+      document.getElementById("kpiSoonest").textContent = timedRows.length ? formatTime(timedRows[0].mins) : "-";
+
+      const bad = all.filter(b => b.gas > GAS_LIMIT);
+      const kpiHazards = document.getElementById("kpiHazards");
+      kpiHazards.textContent = String(bad.length);
+      kpiHazards.classList.toggle("accent", bad.length > 0);
+
+      // Apply selected view filter to the priority table
+      const visibleRows = sortedRows.filter(r => {
+        if (activeFilter === "hazard") return r.b.gas > GAS_LIMIT;
+        if (activeFilter === "action") return r.b.gas > GAS_LIMIT || r.b.fill >= 50;
+        return true;
+      });
+
+      const listBody = document.getElementById("list");
+      if (visibleRows.length === 0) {
+        listBody.innerHTML = "<tr class='empty-row'><td colspan='6'>No bins match the selected filter right now.</td></tr>";
+      } else {
+        listBody.innerHTML = visibleRows.map(r => {
+          const priorityRank = sortedRows.indexOf(r) + 1;
+          const s = statusOf(r.b);
+          const isHazard = r.b.gas > GAS_LIMIT;
+          const hazardTag = isHazard ? " <span class='hazard-tag'>&#9888; HAZARD</span>" : "";
+          const rankClass = priorityRank === 1 ? "rank-num mono top-priority" : "rank-num mono";
+          const safeFill = Math.max(0, Math.min(100, Number(r.b.fill) || 0));
+
+          return (
+            "<tr class='bin-row' data-bin-id='" + r.b.id + "' tabindex='0'>" +
+              "<td><span class='" + rankClass + "'>" + priorityRank + "</span></td>" +
+              "<td><div class='bin-cell'><span>" + r.b.name + "</span>" + hazardTag + "</div></td>" +
+              "<td class='num'>" +
+                "<div class='fill-cell'>" +
+                  "<span class='fill-track' aria-hidden='true'><span class='fill-bar' style='width:" + safeFill + "%;background:" + s.color + "'></span></span>" +
+                  "<span class='mono'>" + r.b.fill + "%</span>" +
+                "</div>" +
+              "</td>" +
+              "<td class='num mono'>" + r.b.gas + "</td>" +
+              "<td class='num mono'>" + formatTime(r.mins) + "</td>" +
+              "<td class='status-text' style='color:" + s.color + "'>" + s.text + "</td>" +
+            "</tr>"
+          );
+        }).join("");
+      }
+
+      // Update map marker colors and popups
+      for (const id in bins) {
+        const b = bins[id];
+        const s = statusOf(b);
+        const isHazard = b.gas > GAS_LIMIT;
+        markers[id].setStyle({
+          color: isHazard ? "#ff5500" : s.color,
+          fillColor: s.color
+        });
+        markers[id].bindPopup(
+          "<b>" + b.name + "</b>" +
+          (isHazard ? " <span style='color:#ff5500;font-weight:700;'>&#9888; HAZARD</span>" : "") +
+          "<br>Fill: <span class='mono'>" + b.fill + "%</span>" +
+          "<br>Gas: <span class='mono'>" + b.gas + "</span>" +
+          "<br>Status: <b style='color:" + s.color + "'>" + s.text + "</b>"
+        );
+      }
+
+      // Update Chart.js dataset
+      chart.data.labels = all.map(b => b.name);
+      chart.data.datasets[0].data = all.map(b => b.fill);
+      chart.data.datasets[0].backgroundColor = all.map(b => statusOf(b).color);
+      chart.update();
+
+      // Show or hide the hazard alert banner
+      const box = document.getElementById("alert");
+      if (bad.length) {
+        box.style.display = "block";
+        box.innerHTML =
+          "<div class='alert-inner'>" +
+            "<div class='alert-text'>" +
+              "<span class='alert-flag'>&#9888; HAZARD ALERT</span>" +
+              "<span>Abnormal gas level (&gt; " + GAS_LIMIT + ") detected at " + bad.map(b => b.name).join(", ") + "</span>" +
+            "</div>" +
+          "</div>";
+      } else {
+        box.style.display = "none";
+      }
+
+      // Show latest real sensor update time
+      if (lastUpdateAt) {
+        document.getElementById("lastUpdateText").textContent = "Last sensor update " + lastUpdateAt.toLocaleTimeString();
+      }
+    }
+
+    // ---- 6. Interactive UI handlers ----
+    // Filter tabs in the Priority Pickup List
+    document.querySelectorAll(".filter-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        activeFilter = btn.getAttribute("data-filter") || "all";
+        document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        render();
+      });
+    });
+
+    // Clicking or pressing Enter on a table row focuses that bin on the map
+    const listEl = document.getElementById("list");
+    listEl.addEventListener("click", e => {
+      const row = e.target.closest("tr[data-bin-id]");
+      if (row) focusBinOnMap(row.getAttribute("data-bin-id"));
+    });
+    listEl.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        const row = e.target.closest("tr[data-bin-id]");
+        if (row) {
+          e.preventDefault();
+          focusBinOnMap(row.getAttribute("data-bin-id"));
+        }
+      }
+    });
+
+    // Center Map button resets zoom and coordinates
+    document.getElementById("resetMapBtn").addEventListener("click", () => {
+      map.closePopup();
+      map.setView(MAP_CENTER, MAP_ZOOM, { animate: true });
+    });
+
+    // Focus Top Priority button jumps to the #1 bin on the map
+    document.getElementById("focusTopBtn").addEventListener("click", () => {
+      const sorted = getSortedRows();
+      if (sorted.length) {
+        focusBinOnMap(sorted[0].b.id);
+        document.getElementById("map-section").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+
+    // ---- 7. Live data from all 5 Firebase sensors ----
+    for (const id in bins) {
+      db.ref("bins/" + id).on("value", snap => {
+        const v = snap.val();
+        if (!v) return;
+        bins[id].fill = v.fill;
+        bins[id].gas = v.gas;
+        bins[id].ts = v.ts || null;
+        lastUpdateAt = new Date();
+        record(bins[id]);
+        render();
+      });
+    }
+
+    // Initial render before live Firebase snapshots arrive
+    render();
+  </script>
+</body>
+</html>
